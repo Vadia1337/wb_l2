@@ -1,5 +1,11 @@
 package main
 
+import (
+	"fmt"
+	"github.com/beevik/ntp"
+	"os"
+)
+
 /*
 === Базовая задача ===
 
@@ -10,8 +16,20 @@ package main
 Программа должна быть оформлена с использованием как go module.
 Программа должна корректно обрабатывать ошибки библиотеки: распечатывать их в STDERR и возвращать ненулевой код выхода в OS.
 Программа должна проходить проверки go vet и golint.
+
+! модуль конечно нужно называть по типу https://github.com/имяЮзера/названиеМодуля, но так как грузить
+ не собираемся, то можно просто назвать)
 */
 
-func main() {
+const timeServer = "0.beevik-ntp.pool.ntp.org"
 
+func main() {
+	time, err := ntp.Time(timeServer)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error. Go module NTPtime.main: ", err.Error())
+		os.Exit(1)
+		return
+	}
+
+	fmt.Println(time)
 }
