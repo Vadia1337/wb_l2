@@ -21,15 +21,24 @@ import (
  не собираемся, то можно просто назвать)
 */
 
-const timeServer = "0.beevik-ntp.pool.ntp.org"
+var timeServer = "0.beevik-ntp.pool.ntp.org"
 
 func main() {
-	time, err := ntp.Time(timeServer)
+	err := time()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error. Go module NTPtime.main: ", err.Error())
 		os.Exit(1)
 		return
 	}
+}
 
-	fmt.Println(time)
+func time() error {
+	tm, err := ntp.Time(timeServer)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(tm)
+
+	return nil
 }
