@@ -38,7 +38,7 @@ func time() error {
 		return err
 	}
 
-	fmt.Println(tm)
+	fmt.Printf("Текущее точное время: %d:%d:%d наносекунды: %d", tm.Hour(), tm.Minute(), tm.Second(), tm.Nanosecond())
 
 	return nil
 }
