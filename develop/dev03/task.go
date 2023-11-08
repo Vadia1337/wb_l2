@@ -3,8 +3,9 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	flag "flag"
-	"fmt"
+	"log"
 	"os"
 	"slices"
 	"sort"
@@ -42,6 +43,13 @@ var (
 	SortByInt        bool
 	ReverseSort      bool
 	UniqueValues     bool
+
+	SortStrByNFlagError      = errors.New("вы пытаетесь отсортировать строку с использованием флага -n, который сортирует числа")
+	CantOpenFileToWriteError = errors.New("не получилось открыть файл для записи")
+	WriteToFileError         = errors.New("ошибка при записи в файл")
+	CantFindFileError        = errors.New("не могу найти файл, который вы указали")
+	GetFileStatsError        = errors.New("ошибка при получении информации о файле")
+	ReadFileError            = errors.New("ошибка при чтении из файла")
 )
 
 func init() {
@@ -53,37 +61,60 @@ func init() {
 
 func main() {
 	flag.Parse()
-	SortSmallFile(flag.Arg(0))
+	err := Sort(flag.Arg(0))
+	if err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
 }
 
-func SortSmallFile(fileName string) {
-	// валидация аргументов
+// было решено сгрузить весь файл в озу, что в случае с большими файлами, черевато переполнением памяти.
+
+// другим решением, обеспечивающем работу с файлами большого размера, могло стать построчное чтение файла, или чтение
+// партиями, и тут же сохранение в файлы по определенному признаку, к примеру для int - в 1 файле может храниться
+// отсортированнный диапазон значений в который могут добавляться новые, в случае с строками дело обстоит сложнее..
+// далее такие файлы нужно склеить друг с другом и получить итоговый отсортированный файл, но такая реализация выглядит
+// очень сложной, больше похожей на разработку собственной БД ;-)
+func Sort(fileName string) error {
 
 	file, err := os.Open(fileName)
 	if err != nil {
-		fmt.Println("Не могу найти файл, который вы указали")
-		os.Exit(1)
+		return CantFindFileError
 	}
 	defer file.Close()
 
 	fileStats, err := file.Stat()
 	if err != nil {
-		fmt.Println("Ошибка при получении информации о файле")
-		os.Exit(1)
+		return GetFileStatsError
 	}
-
-	strLines := make(map[string][]byte)  // размер = кол-во строк в файле
-	strLinesKeys := make([]string, 0, 2) // размер = кол-во строк в файле
 
 	fileContens := make([]byte, fileStats.Size())
 
 	_, err = file.Read(fileContens)
 	if err != nil {
-		fmt.Println("Ошибка при чтении из файла")
-		os.Exit(1)
+		return ReadFileError
 	}
 
 	lines := bytes.Split(fileContens, []byte("\r\n"))
+
+	if SortByInt {
+		err = sortByInt(lines)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = sortByStr(lines)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func sortByStr(lines [][]byte) error {
+	strLines := make(map[string][]byte)
+	strLinesKeys := make([]string, 0, 2)
 
 	for i, v := range lines {
 		lineKey := string(bytes.Split(v, []byte(" "))[SelectColumnFlag-1])
@@ -94,52 +125,14 @@ func SortSmallFile(fileName string) {
 				continue
 			}
 
-			if !SortByInt {
-				lineKey += fmt.Sprintf("%f", float32(i)/100000)
-			}
-
+			lineKey += strconv.Itoa(i)
 		}
 
 		strLines[lineKey] = v
 		strLinesKeys = append(strLinesKeys, lineKey)
 	}
 
-	fmt.Println(strLinesKeys)
-
-	if SortByInt { // решил замудрить, чтобы поиспользовать что-то новое :-)
-
-		type sortStruct struct {
-			strSlice string
-			intSlice float64
-		}
-
-		var sortStructs []sortStruct
-
-		for i, s := range strLinesKeys {
-			strToInt, err := strconv.ParseFloat(s, 32)
-			if err != nil {
-				fmt.Println("Столбец не содержит числа, попробуйте выбрать другой столбец для сортировки по числу")
-				os.Exit(1)
-			}
-			strToInt += float64(i) / 100000
-			strLinesKeys[i] = fmt.Sprintf("%f", strToInt)
-			sortStructs = append(sortStructs, sortStruct{
-				strSlice: s,
-				intSlice: strToInt,
-			})
-		}
-
-		sort.Slice(sortStructs, func(i, j int) bool {
-			return sortStructs[i].intSlice < sortStructs[j].intSlice
-		})
-
-		for i, v := range sortStructs {
-			strLinesKeys[i] = v.strSlice
-		}
-
-	} else {
-		sort.Strings(strLinesKeys)
-	}
+	sort.Strings(strLinesKeys)
 
 	if ReverseSort {
 		slices.Reverse(strLinesKeys)
@@ -147,8 +140,7 @@ func SortSmallFile(fileName string) {
 
 	open, err := os.Create("out.txt")
 	if err != nil {
-		fmt.Println("Не получилось открыть файл для записи")
-		os.Exit(1)
+		return CantOpenFileToWriteError
 	}
 	defer open.Close()
 
@@ -160,15 +152,63 @@ func SortSmallFile(fileName string) {
 
 	_, err = open.Write(buffer.Bytes())
 	if err != nil {
-		fmt.Println("Ошибка при записи в файл")
-		os.Exit(1)
+		return WriteToFileError
+	}
+	return nil
+}
+
+func sortByInt(lines [][]byte) error {
+	strLines := make(map[float64][]byte)
+	strLinesKeys := make([]float64, 0, 2)
+
+	for i, v := range lines {
+		strToFloat := string(bytes.Split(v, []byte(" "))[SelectColumnFlag-1])
+		lineKey, err := strconv.ParseFloat(strToFloat, 64)
+		if err != nil {
+			return SortStrByNFlagError
+		}
+
+		_, ok := strLines[lineKey]
+		if ok {
+			if UniqueValues {
+				continue
+			}
+
+			lineKey += float64(i) / 100000
+		}
+
+		strLines[lineKey] = v
+		strLinesKeys = append(strLinesKeys, lineKey)
 	}
 
+	sort.Float64s(strLinesKeys)
+
+	if ReverseSort {
+		slices.Reverse(strLinesKeys)
+	}
+
+	open, err := os.Create("out.txt")
+	if err != nil {
+		return CantOpenFileToWriteError
+	}
+	defer open.Close()
+
+	var buffer bytes.Buffer
+	for _, v := range strLinesKeys {
+		buffer.Write(strLines[v])
+		buffer.Write([]byte("\r\n"))
+	}
+
+	_, err = open.Write(buffer.Bytes())
+	if err != nil {
+		return WriteToFileError
+	}
+	return nil
 }
 
 /******************************************/
 // реализовал для тестов
-func Sort(fileName string) {
+func SortOld(fileName string) {
 
 	// валидация аргументов
 

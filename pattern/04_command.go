@@ -55,7 +55,7 @@ type Invoker struct { //вызыватель
 }
 
 func (i *Invoker) StoreAndExecute(cmd Command) {
-	i.history = append(i.history, cmd) //todo: много аллокаций будет :-(
+	i.history = append(i.history, cmd)
 	cmd.Execute()
 }
 
