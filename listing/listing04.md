@@ -18,7 +18,6 @@ func main() {
 ```
 
 Ответ:
-```
-...
+fatal error: all goroutines are asleep - deadlock!
 
-```
+не закрыли канал после цикла в горутине
